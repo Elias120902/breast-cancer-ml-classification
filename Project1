@@ -1,0 +1,133 @@
+from typing import Tuple
+import pandas as pd
+import numpy as np
+
+try:
+    from ucimlrepo import fetch_ucirepo
+except ImportError as e:
+    raise ImportError(
+        "ucimlrepo is required. Install with: pip install ucimlrepo"
+    ) from e
+
+from sklearn.model_selection import train_test_split    
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import (
+    accuracy_score,
+    classification_report,
+    confusion_matrix )
+
+
+def load_breast_cancer_dataset() -> Tuple[pd.DataFrame, pd.Series]:
+    """
+    Load the Breast Cancer Wisconsin dataset from the UCI Machine Learning Repository.
+
+    Returns
+    -------
+    X : pd.DataFrame
+        Feature matrix
+    y : pd.Series
+        Target labels (benign / malignant)
+    """
+    dataset = fetch_ucirepo(id=17)
+
+    X = pd.DataFrame(dataset.data.features)
+    y = pd.Series(
+        np.ravel(dataset.data.targets),
+        name="label"
+    )
+
+    return X, y
+
+
+def explore_dataset(X: pd.DataFrame, y: pd.Series) -> None:
+    """Simple exploratory data analysis."""
+    print("\n--- Dataset Overview ---")
+    print("Missing values:\n", X.isnull().sum())
+    print("\nClass distribution:\n", y.value_counts())
+    print("\nFeature statistics:\n", X.describe())
+
+
+
+def prepare_data(X: pd.DataFrame, y: pd.Series) -> tuple:
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y,
+        test_size=0.2,
+        random_state=42,
+        stratify=y
+    )
+
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
+
+    return X_train_scaled, X_test_scaled, y_train, y_test
+
+
+def train_model(
+    X_train: np.ndarray, y_train: pd.Series
+) -> LogisticRegression:
+    model = LogisticRegression(
+        max_iter=1000,
+        class_weight="balanced"
+    )
+    model.fit(X_train, y_train)
+    return model
+
+
+def evaluate_model(
+    model: LogisticRegression,
+    X_test: np.ndarray,
+    y_test: pd.Series
+) -> None:
+    """Evaluate model performance."""
+    y_pred = model.predict(X_test)
+
+    print("Distribuição real:")
+    print(y_test.value_counts())
+    print("\nDistribuição prevista:")
+    print(pd.Series(y_pred).value_counts())
+
+    print("\n--- Model Evaluation ---")
+    print("Accuracy:", accuracy_score(y_test, y_pred))
+    print("\nClassification Report:\n")
+    print(classification_report(y_test, y_pred))
+    print("Confusion Matrix:\n", confusion_matrix(y_test, y_pred))
+    
+def clean_dataset(X: pd.DataFrame) -> pd.DataFrame:
+    X_clean = X.copy()
+
+    for col in X_clean.columns:
+        X_clean[col] = pd.to_numeric(X_clean[col], errors="coerce")
+
+    # Substituir NaN pela mediana
+    X_clean = X_clean.fillna(X_clean.median())
+
+    # Remover colunas com variância zero
+    X_clean = X_clean.loc[:, X_clean.nunique() > 1]
+
+    return X_clean
+
+if __name__ == "__main__":
+    X, y = load_breast_cancer_dataset()
+
+    le = LabelEncoder()
+    y = pd.Series(le.fit_transform(y), name="label")
+
+    print("Mapeamento das classes:", dict(zip(le.classes_, le.transform(le.classes_))))
+
+    print("Dataset loaded successfully")
+    print("Features shape:", X.shape)
+    print("Labels shape:", y.shape)
+    print("Classes:", y.unique())
+
+    X = clean_dataset(X)
+
+    explore_dataset(X, y)
+
+    X_train, X_test, y_train, y_test = prepare_data(X, y)
+
+    model = train_model(X_train, y_train)
+
+    evaluate_model(model, X_test, y_test)
